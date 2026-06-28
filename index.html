@@ -44,45 +44,32 @@ textarea::placeholder{color:#BBB;}
 @keyframes dp{0%,80%,100%{opacity:.15}40%{opacity:1}}
 .status{background:#FFF;border-top:1px solid #E5E3DF;padding:5px 16px;font-size:11px;color:#888;flex-shrink:0;}
 
-/* PDF PRINT STYLES */
-@media print {
-  body * { visibility: hidden; }
-  #pdf-content, #pdf-content * { visibility: visible; }
-  #pdf-content {
-    position: fixed; top: 0; left: 0; right: 0;
-    font-family: Arial, sans-serif;
-    font-size: 10pt;
-    color: #000;
-    padding: 0.75in;
-    line-height: 1.5;
-  }
-  .pdf-header { display: flex !important; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 2px solid #E8500A; padding-bottom: 10px; }
-  .pdf-logo { font-size: 28pt; font-weight: bold; color: #E8500A; }
-  .pdf-co { text-align: right; font-size: 8pt; color: #444; line-height: 1.6; }
-  .pdf-title { font-size: 14pt; font-weight: bold; text-align: center; margin: 12px 0 16px; }
-  .pdf-body { white-space: pre-wrap; font-family: Arial, sans-serif; font-size: 10pt; line-height: 1.6; }
-  .pdf-section { font-weight: bold; background: #E0E0E0; padding: 3px 8px; margin: 10px 0 4px; display: block; }
-  .pdf-footer { margin-top: 24px; border-top: 1px solid #CCC; padding-top: 8px; font-size: 8pt; color: #666; font-style: italic; display: flex; justify-content: space-between; }
-}
+/* ── PDF IFRAME MODAL ── */
+#pdf-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center;}
+#pdf-modal.open{display:flex;}
+#pdf-modal-inner{background:#FFF;border-radius:8px;width:90vw;max-width:900px;height:90vh;display:flex;flex-direction:column;overflow:hidden;}
+#pdf-modal-bar{background:#111820;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+#pdf-modal-bar span{color:#CCC;font-size:12px;font-family:'Inter',sans-serif;}
+#pdf-modal-bar .btns{display:flex;gap:8px;}
+.modal-btn{padding:6px 14px;border:none;border-radius:5px;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;}
+.modal-btn.print{background:#E8500A;color:#FFF;}
+.modal-btn.close{background:#2A3540;color:#CCC;}
+#pdf-frame{flex:1;border:none;width:100%;}
 </style>
 </head>
 <body>
 
-<!-- Hidden PDF content for printing -->
-<div id="pdf-content" style="display:none;">
-  <div class="pdf-header">
-    <div class="pdf-logo">TCI</div>
-    <div class="pdf-co">
-      <strong>Total Construction, Inc.</strong><br>
-      625 West Ridge Pike, Building D, Suite 104<br>
-      Conshohocken, Pennsylvania 19428
+<!-- PDF Modal -->
+<div id="pdf-modal">
+  <div id="pdf-modal-inner">
+    <div id="pdf-modal-bar">
+      <span>Preview — click Print/Save as PDF to download</span>
+      <div class="btns">
+        <button class="modal-btn print" onclick="printFrame()">🖨 Print / Save as PDF</button>
+        <button class="modal-btn close" onclick="closeModal()">✕ Close</button>
+      </div>
     </div>
-  </div>
-  <div class="pdf-title" id="pdf-title">OAC Meeting Minutes</div>
-  <div class="pdf-body" id="pdf-body"></div>
-  <div class="pdf-footer">
-    <span>Total Construction, Inc. — Confidential</span>
-    <span id="pdf-date"></span>
+    <iframe id="pdf-frame" src="about:blank"></iframe>
   </div>
 </div>
 
@@ -91,14 +78,12 @@ textarea::placeholder{color:#BBB;}
   <div class="bar-div"></div>
   <span class="bar-title">Meeting Minutes — Total Construction, Inc.</span>
   <div class="bar-actions">
-    <button class="bar-btn secondary" id="pdfBtn" onclick="downloadPDF()" disabled>⬇ Save as PDF</button>
+    <button class="bar-btn secondary" id="pdfBtn" onclick="openPDF()" disabled>⬇ Save as PDF</button>
     <button class="bar-btn" id="genBtn" onclick="generate()">⚡ Generate Minutes</button>
   </div>
 </div>
 
 <div class="cols">
-
-  <!-- Panel 1 -->
   <div class="col">
     <div class="col-head">
       <div class="col-head-left"><span class="num">1</span> Previous Meeting Minutes</div>
@@ -113,7 +98,6 @@ textarea::placeholder{color:#BBB;}
     <textarea id="prev" placeholder="Or paste previous meeting minutes here...&#10;&#10;Leave blank for first meeting — the tool extracts all project info from the transcript automatically."></textarea>
   </div>
 
-  <!-- Panel 2 -->
   <div class="col">
     <div class="col-head">
       <div class="col-head-left"><span class="num">2</span> Current Meeting Transcript</div>
@@ -128,7 +112,6 @@ textarea::placeholder{color:#BBB;}
     <textarea id="trans" placeholder="Or paste today's transcript or meeting notes here..."></textarea>
   </div>
 
-  <!-- Panel 3 -->
   <div class="col">
     <div class="col-head">
       <div class="col-head-left"><span class="num">3</span> Generated Minutes</div>
@@ -137,11 +120,10 @@ textarea::placeholder{color:#BBB;}
     <div class="out" id="out">
       <div class="empty">
         <div class="empty-icon">📋</div>
-        <div>Paste or upload previous minutes and today's transcript, then click Generate.<br><br>Use <strong>Copy all</strong> to paste into Procore, or <strong>Save as PDF</strong> to download.</div>
+        <div>Paste or upload previous minutes and today's transcript, then click Generate.<br><br>Use <strong>Copy all</strong> to paste into Procore, or <strong>Save as PDF</strong> to download a formatted document.</div>
       </div>
     </div>
   </div>
-
 </div>
 
 <div class="status" id="status">Ready</div>
@@ -173,41 +155,55 @@ ${!prev
   ? 'FIRST MEETING: No previous minutes provided. Extract all project info directly from the transcript — project name, number, address, owner, architect, attendees, date, location, meeting number. Mark anything not mentioned as TBD.'
   : 'AGENDA: Use the previous minutes as the agenda. Cross-reference every open item against the transcript. Tag each: [CLOSED] [CARRIED] [NOT ADDRESSED].'}
 
-OUTPUT THESE SECTIONS IN ORDER:
+OUTPUT FORMAT — use EXACTLY this structure. This will be rendered into a Procore-style PDF.
+
 === MEETING INFORMATION ===
-Project | Project No. | Date | Time | Location | Prepared by: Total Construction, Inc.
+Project: [name]
+Project No.: [number]
+Date: [date]
+Time: [time]
+Location: [location]
+Prepared by: Total Construction, Inc.
 
 === OVERVIEW ===
-"The below minutes are meant to accurately reflect the topics and conversations from this project meeting. Should you request modifications or additions be made to these minutes, kindly respond within 5 business days of distribution. Otherwise, these minutes will stand as an accurate record of the meeting."
+The below minutes are meant to accurately reflect the topics and conversations from this project meeting. Should you request modifications or additions be made to these minutes, kindly respond within 5 business days of distribution. Otherwise, these minutes will stand as an accurate record of the meeting.
 
 === SCHEDULED ATTENDEES ===
 Name | Company | Role | Attendance
+[one per line, pipe separated]
 
-=== DESIGN (1.x) ===
-Critical decisions and open coordination items.
+=== DESIGN ===
+ITEM | [No.] | [Mtg Origin] | [Title] | [Assignment] | [Due Date] | [Priority] | [Status]
+DESC | [description text]
+OFFICIAL | [official documented meeting minutes text]
+[repeat ITEM/DESC/OFFICIAL for each item]
 
-=== PROGRESS UPDATE / SCHEDULE (2.x) ===
-Weekly progress, upcoming work, target dates.
+=== PROGRESS UPDATE / SCHEDULE ===
+ITEM | [No.] | [Mtg Origin] | [Title] | [Assignment] | [Due Date] | [Priority] | [Status]
+DESC | [description]
+OFFICIAL | [official notes]
 
-=== COORDINATION (2.x) ===
-Tenant, subcontractor, and owner items.
+=== COORDINATION ===
+ITEM | [No.] | [Mtg Origin] | [Title] | [Assignment] | [Due Date] | [Priority] | [Status]
+DESC | [description]
+OFFICIAL | [official notes]
 
-=== RFI'S (4.x) ===
-Open and new RFIs.
+=== RFI'S ===
+ITEM | [No.] | [Mtg Origin] | [Title] | [Assignment] | [Due Date] | [Priority] | [Status]
+DESC | [description]
+OFFICIAL | [official notes]
 
-=== CHANGE ORDERS (5.x) ===
-Active change events and pending approvals.
+=== CHANGE ORDERS ===
+ITEM | [No.] | [Mtg Origin] | [Title] | [Assignment] | [Due Date] | [Priority] | [Status]
+DESC | [description]
+OFFICIAL | [official notes]
 
-=== ADMINISTRATIVE (6.x) ===
-Next meeting date, time, format.
+=== ADMINISTRATIVE ===
+ITEM | [No.] | [Mtg Origin] | [Title] | [Assignment] | [Due Date] | [Priority] | [Status]
+DESC | [description]
+OFFICIAL | [official notes]
 
-ITEM FORMAT:
-[No.] [Title] | Assignment | Due Date | Status
-• bullet points of discussion
-
-END WITH: "These meeting minutes are believed to be an accurate reflection of those items discussed and the conclusions that were reached during the referenced meeting. Please contact Total Construction, Inc. if there are any discrepancies or questions with the content of these minutes."
-
-Output ONLY the formatted minutes. No preamble.`;
+Only include sections that have content. Output ONLY the formatted minutes. No preamble.`;
 
   const user = (prev ? `PREVIOUS MINUTES:\n${prev}\n\n` : '') + `TRANSCRIPT:\n${trans}`;
 
@@ -226,56 +222,274 @@ Output ONLY the formatted minutes. No preamble.`;
     const data = await res.json();
     const text = data.content?.map(b => b.text||'').join('') || '';
     if (!text || text.length < 30) throw new Error('Empty response — check API key has credits at console.anthropic.com');
-
     out.textContent = text;
     document.getElementById('pdfBtn').disabled = false;
     setStatus('Minutes ready — Save as PDF or Copy all');
-
   } catch(err) {
     out.innerHTML = `<div class="empty" style="color:#C0392B;"><div style="font-size:22px;">⚠</div><div style="max-width:300px;line-height:1.6;margin-top:8px;">${err.message}</div></div>`;
     setStatus('Error — ' + err.message);
   }
-
   btn.disabled = false;
   btn.textContent = '⚡ Generate Minutes';
 }
 
-// ── PDF DOWNLOAD ──────────────────────────────────────────────────────────────
-function downloadPDF() {
+// ── PDF BUILDER ───────────────────────────────────────────────────────────────
+function buildPDFHtml(rawText) {
+  const lines = rawText.split('\n');
+  const today = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+
+  // Parse structured data
+  let sections = [];
+  let currentSection = null;
+  let currentItem = null;
+  let meetingInfo = {};
+  let attendees = [];
+  let overview = '';
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+
+    if (/^===/.test(t)) {
+      if (currentItem && currentSection) currentSection.items.push(currentItem);
+      currentItem = null;
+      if (currentSection) sections.push(currentSection);
+      const name = t.replace(/=/g,'').trim();
+      currentSection = { name, items: [], raw: [] };
+      continue;
+    }
+
+    if (!currentSection) continue;
+    const sName = currentSection.name.toUpperCase();
+
+    if (sName === 'MEETING INFORMATION') {
+      const m = t.match(/^([^:]+):\s*(.+)/);
+      if (m) meetingInfo[m[1].trim()] = m[2].trim();
+
+    } else if (sName === 'OVERVIEW') {
+      overview += (overview ? ' ' : '') + t;
+
+    } else if (sName === 'SCHEDULED ATTENDEES') {
+      if (!t.startsWith('Name')) attendees.push(t);
+
+    } else if (t.startsWith('ITEM |')) {
+      if (currentItem) currentSection.items.push(currentItem);
+      const parts = t.split('|').map(s=>s.trim());
+      currentItem = {
+        no: parts[1]||'', origin: parts[2]||'', title: parts[3]||'',
+        assignment: parts[4]||'', due: parts[5]||'', priority: parts[6]||'', status: parts[7]||'Open',
+        desc: '', official: ''
+      };
+    } else if (t.startsWith('DESC |')) {
+      if (currentItem) currentItem.desc += t.replace('DESC |','').trim() + ' ';
+    } else if (t.startsWith('OFFICIAL |')) {
+      if (currentItem) currentItem.official += t.replace('OFFICIAL |','').trim() + ' ';
+    } else {
+      if (currentItem) currentItem.official += t + ' ';
+      else currentSection.raw.push(t);
+    }
+  }
+  if (currentItem && currentSection) currentSection.items.push(currentItem);
+  if (currentSection) sections.push(currentSection);
+
+  // Extract project title for header
+  const projectName = meetingInfo['Project'] || '';
+  const meetingNo = meetingInfo['Meeting No'] || meetingInfo['Meeting No.'] || '';
+  const docTitle = projectName ? `${projectName} — OAC Meeting Minutes${meetingNo ? ': ' + meetingNo : ''}` : 'OAC Meeting Minutes';
+
+  // Build HTML
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 9.5pt; color: #1A1A1A; }
+  .page { padding: 0.6in 0.65in; }
+
+  /* TCI Header */
+  .tci-header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 10px; border-bottom: 2px solid #CCC; margin-bottom: 14px; }
+  .tci-left { display: flex; align-items: center; gap: 14px; }
+  .tci-logo-box { background: #E8500A; padding: 6px 12px; border-radius: 4px; }
+  .tci-logo-box span { font-size: 22pt; font-weight: bold; color: #FFF; font-family: Arial; }
+  .tci-addr { font-size: 8pt; color: #444; line-height: 1.6; }
+  .tci-proj { font-size: 8pt; color: #444; text-align: right; line-height: 1.6; }
+  .tci-proj strong { font-size: 9pt; color: #1A1A1A; }
+
+  /* Title */
+  .doc-title { font-size: 15pt; font-weight: bold; text-align: center; margin: 14px 0 12px; }
+
+  /* Meeting info table */
+  .info-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  .info-table td { border: 1px solid #CCC; padding: 5px 8px; font-size: 8.5pt; }
+  .info-table td.label { font-weight: bold; width: 15%; background: #FFF; }
+  .info-table td.value { width: 35%; }
+
+  /* Overview / Notes */
+  .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  .meta-table td { border: 1px solid #CCC; padding: 6px 8px; font-size: 8.5pt; vertical-align: top; }
+  .meta-table td.label { font-weight: bold; width: 15%; }
+
+  /* Attendees */
+  .att-section { margin-bottom: 14px; }
+  .att-title { font-size: 11pt; font-weight: bold; margin-bottom: 6px; }
+  .att-table { width: 100%; border-collapse: collapse; }
+  .att-table th { background: #F2F2F2; border: 1px solid #CCC; padding: 5px 8px; font-size: 8.5pt; text-align: left; font-weight: bold; }
+  .att-table td { border: 1px solid #CCC; padding: 5px 8px; font-size: 8.5pt; }
+
+  /* Section headers */
+  .section-title { font-size: 11pt; font-weight: bold; margin: 14px 0 6px; padding-bottom: 4px; border-bottom: 1px solid #CCC; }
+
+  /* Item tables */
+  .item-header-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+  .item-header-table th { background: #F2F2F2; border: 1px solid #CCC; padding: 4px 6px; font-size: 8pt; text-align: left; font-weight: bold; }
+  .item-header-table td { border: 1px solid #CCC; padding: 4px 6px; font-size: 8pt; }
+
+  .item-desc-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  .item-desc-table td { border: 1px solid #CCC; padding: 6px 10px; font-size: 8.5pt; line-height: 1.6; }
+  .official-label { font-weight: bold; margin-bottom: 4px; }
+
+  /* Footer */
+  .footer-note { font-size: 8pt; color: #444; font-style: italic; margin-top: 20px; border-top: 1px solid #CCC; padding-top: 8px; }
+  .footer-bar { display: flex; justify-content: space-between; font-size: 8pt; color: #666; margin-top: 10px; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page { padding: 0.5in 0.6in; }
+    .section-title { page-break-inside: avoid; }
+    .item-header-table { page-break-inside: avoid; }
+  }
+</style>
+</head><body><div class="page">`;
+
+  // TCI Header
+  html += `<div class="tci-header">
+    <div class="tci-left">
+      <div class="tci-logo-box"><span>TCI</span></div>
+      <div class="tci-addr">
+        <strong>Total Construction, Inc.</strong><br>
+        625 West Ridge Pike, Building D, Suite 104<br>
+        Conshohocken, Pennsylvania 19428
+      </div>
+    </div>
+    <div class="tci-proj">
+      ${meetingInfo['Project'] ? `<strong>Project: ${meetingInfo['Project No.'] || meetingInfo['Project No'] || ''} ${meetingInfo['Project']}</strong><br>` : ''}
+      ${meetingInfo['Location'] || ''}
+    </div>
+  </div>`;
+
+  // Title
+  html += `<div class="doc-title">${docTitle}</div>`;
+
+  // Meeting info
+  const infoFields = [
+    ['Meeting Date', meetingInfo['Date'] || ''],
+    ['Meeting Time', meetingInfo['Time'] || ''],
+    ['Meeting Location', meetingInfo['Location'] || ''],
+    ['Prepared By', meetingInfo['Prepared by'] || 'Total Construction, Inc.']
+  ];
+  html += `<table class="info-table">`;
+  for (let i = 0; i < infoFields.length; i += 2) {
+    html += `<tr>
+      <td class="label">${infoFields[i][0]}</td><td class="value">${infoFields[i][1]}</td>
+      ${infoFields[i+1] ? `<td class="label">${infoFields[i+1][0]}</td><td class="value">${infoFields[i+1][1]}</td>` : '<td></td><td></td>'}
+    </tr>`;
+  }
+  html += `</table>`;
+
+  // Overview
+  html += `<table class="meta-table">
+    <tr><td class="label">Overview</td><td>${overview || 'The below minutes are meant to accurately reflect the topics and conversations from this project meeting. Should you request modifications or additions be made to these minutes, kindly respond within 5 business days of distribution. Otherwise, these minutes will stand as an accurate record of the meeting.'}</td></tr>
+    <tr><td class="label">Notes</td><td>&nbsp;</td></tr>
+    <tr><td class="label">Attachments</td><td>&nbsp;</td></tr>
+  </table>`;
+
+  // Attendees
+  if (attendees.length) {
+    html += `<div class="att-section">
+      <div class="att-title">Scheduled Attendees</div>
+      <table class="att-table">
+        <tr><th>Name</th><th>Company</th><th>Phone Number</th><th>Email</th><th>Attendance</th></tr>`;
+    for (const att of attendees) {
+      const parts = att.split('|').map(s=>s.trim());
+      html += `<tr>
+        <td>${parts[0]||''}</td>
+        <td>${parts[1]||''}</td>
+        <td>${parts[4]||''}</td>
+        <td>${parts[3]||''}</td>
+        <td>${parts[3]||parts[2]||''}</td>
+      </tr>`;
+    }
+    html += `</table></div>`;
+  }
+
+  // Content sections
+  const skipSections = ['MEETING INFORMATION','OVERVIEW','SCHEDULED ATTENDEES'];
+  for (const section of sections) {
+    if (skipSections.includes(section.name.toUpperCase())) continue;
+    if (!section.items.length && !section.raw.length) continue;
+
+    html += `<div class="section-title">${section.name}</div>`;
+
+    if (section.items.length) {
+      for (const item of section.items) {
+        // Item header row
+        html += `<table class="item-header-table">
+          <tr><th>No.</th><th>Mtg Origin</th><th>Title</th><th>Assignment</th><th>Due Date</th><th>Priority</th><th>Status</th></tr>
+          <tr>
+            <td style="width:6%">${item.no}</td>
+            <td style="width:9%">${item.origin}</td>
+            <td style="width:35%">${item.title}</td>
+            <td style="width:20%">${item.assignment}</td>
+            <td style="width:12%">${item.due}</td>
+            <td style="width:10%">${item.priority}</td>
+            <td style="width:8%">${item.status}</td>
+          </tr>
+        </table>`;
+
+        // Description + official block
+        const hasDesc = item.desc.trim();
+        const hasOfficial = item.official.trim();
+        if (hasDesc || hasOfficial) {
+          html += `<table class="item-desc-table"><tr><td>`;
+          if (hasDesc) {
+            html += `<div style="margin-bottom:6px;">${item.desc.trim().split(/\s*•\s*/).filter(Boolean).map(b=>`• ${b}`).join('<br>')}</div>`;
+          }
+          if (hasOfficial) {
+            html += `<div class="official-label">Official Documented Meeting Minutes</div>`;
+            html += `<div>${item.official.trim().split(/\s*•\s*/).filter(Boolean).map(b=>`• ${b}`).join('<br>')}</div>`;
+          }
+          html += `</td></tr></table>`;
+        }
+      }
+    } else if (section.raw.length) {
+      html += `<table class="item-desc-table"><tr><td>${section.raw.join('<br>')}</td></tr></table>`;
+    }
+  }
+
+  // Footer
+  html += `<div class="footer-note">These meeting minutes are believed to be an accurate reflection of those items discussed and the conclusions that were reached during the referenced meeting. Please contact Total Construction, Inc. if there are any discrepancies or questions with the content of these minutes.</div>
+  <div class="footer-bar"><span>Total Construction, Inc.</span><span>Printed On: ${today}</span></div>
+  </div></body></html>`;
+
+  return html;
+}
+
+function openPDF() {
   const text = document.getElementById('out').textContent.trim();
   if (!text || text.length < 30) return;
+  const html = buildPDFHtml(text);
+  const modal = document.getElementById('pdf-modal');
+  const frame = document.getElementById('pdf-frame');
+  frame.srcdoc = html;
+  modal.classList.add('open');
+  setStatus('Preview open — click "Print / Save as PDF" and choose Save as PDF as the destination');
+}
 
-  // Extract title from the minutes text
-  const titleMatch = text.match(/Meeting(?:\s+Minutes)?(?:\s*[:#–-]\s*|\s+)([^\n]+)/i);
-  const title = titleMatch ? titleMatch[1].trim() : 'OAC Meeting Minutes';
+function printFrame() {
+  document.getElementById('pdf-frame').contentWindow.print();
+}
 
-  // Build formatted HTML for printing
-  const lines = text.split('\n');
-  let bodyHTML = '';
-  lines.forEach(line => {
-    const trimmed = line.trim();
-    if (!trimmed) { bodyHTML += '\n'; return; }
-    if (/^={2,}/.test(trimmed)) {
-      const heading = trimmed.replace(/=/g, '').trim();
-      if (heading) bodyHTML += `\n━━━ ${heading} ━━━\n`;
-    } else {
-      bodyHTML += line + '\n';
-    }
-  });
-
-  document.getElementById('pdf-title').textContent = title;
-  document.getElementById('pdf-body').textContent = bodyHTML;
-  document.getElementById('pdf-date').textContent = 'Printed: ' + new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  document.getElementById('pdf-content').style.display = 'block';
-
-  setTimeout(() => {
-    window.print();
-    setTimeout(() => {
-      document.getElementById('pdf-content').style.display = 'none';
-    }, 1000);
-  }, 100);
-
-  setStatus('Print dialog opened — select "Save as PDF" as the destination');
+function closeModal() {
+  document.getElementById('pdf-modal').classList.remove('open');
+  document.getElementById('pdf-frame').srcdoc = 'about:blank';
 }
 
 // ── COPY ──────────────────────────────────────────────────────────────────────
@@ -293,110 +507,39 @@ function copyOut() {
 function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
 // ── FILE UPLOAD ───────────────────────────────────────────────────────────────
-function ov(e, z) { e.preventDefault(); e.stopPropagation(); document.getElementById(z).classList.add('over'); }
-function ol(e, z) { e.preventDefault(); e.stopPropagation(); document.getElementById(z).classList.remove('over'); }
+function ov(e,z){e.preventDefault();e.stopPropagation();document.getElementById(z).classList.add('over');}
+function ol(e,z){e.preventDefault();e.stopPropagation();document.getElementById(z).classList.remove('over');}
+function od(e,ta,z,fn,cl){e.preventDefault();e.stopPropagation();document.getElementById(z).classList.remove('over');const f=e.dataTransfer.files[0];if(f)rf(f,ta,fn,cl);}
 
-function od(e, ta, z, fn, cl) {
-  e.preventDefault();
-  e.stopPropagation();
-  document.getElementById(z).classList.remove('over');
-  const file = e.dataTransfer.files[0];
-  if (file) rf(file, ta, fn, cl);
-}
-
-// Click on drop zone opens file picker
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('z1').addEventListener('click', (e) => {
-    if (e.target.classList.contains('fclr') || e.target.id === 'c1') return;
-    document.getElementById('fi1').click();
-  });
-  document.getElementById('z2').addEventListener('click', (e) => {
-    if (e.target.classList.contains('fclr') || e.target.id === 'c2') return;
-    document.getElementById('fi2').click();
-  });
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('z1').addEventListener('click',(e)=>{if(e.target.classList.contains('fclr')||e.target.id==='c1')return;document.getElementById('fi1').click();});
+  document.getElementById('z2').addEventListener('click',(e)=>{if(e.target.classList.contains('fclr')||e.target.id==='c2')return;document.getElementById('fi2').click();});
 });
 
-function fp(e, ta, fn, cl) {
-  const file = e.target.files[0];
-  if (file) rf(file, ta, fn, cl);
-}
+function fp(e,ta,fn,cl){const f=e.target.files[0];if(f)rf(f,ta,fn,cl);}
 
-function fc(e, ta, fn, cl, fi) {
-  e.stopPropagation();
-  document.getElementById(ta).value = '';
-  document.getElementById(fn).style.display = 'none';
-  document.getElementById(cl).style.display = 'none';
-  const inp = document.getElementById(fi);
-  if (inp) inp.value = '';
-}
+function fc(e,ta,fn,cl,fi){e.stopPropagation();document.getElementById(ta).value='';document.getElementById(fn).style.display='none';document.getElementById(cl).style.display='none';const i=document.getElementById(fi);if(i)i.value='';}
 
-function rf(file, ta, fn, cl) {
-  const ne = document.getElementById(fn);
-  const ce = document.getElementById(cl);
-  const ext = file.name.split('.').pop().toLowerCase();
-
-  if (!['txt', 'pdf', 'docx', 'doc'].includes(ext)) {
-    alert('Please use a .txt, .pdf, or .docx file.');
-    return;
-  }
-
-  ne.textContent = '📄 ' + file.name;
-  ne.style.display = 'inline-block';
-  ce.style.display = 'inline-block';
-  setStatus('Reading ' + file.name + '...');
-
-  if (ext === 'txt') {
-    const r = new FileReader();
-    r.onload = e => {
-      document.getElementById(ta).value = e.target.result;
-      setStatus('Loaded: ' + file.name);
-    };
-    r.onerror = () => alert('Could not read file. Try pasting the text instead.');
-    r.readAsText(file);
-
-  } else if (ext === 'pdf') {
-    if (typeof pdfjsLib === 'undefined') {
-      alert('PDF reader not ready yet — try again in a moment, or paste text manually.');
-      ne.style.display = 'none'; ce.style.display = 'none'; return;
-    }
-    const r = new FileReader();
-    r.onload = async e => {
-      try {
-        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(e.target.result) }).promise;
-        let t = '';
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const pg = await pdf.getPage(i);
-          const ct = await pg.getTextContent();
-          t += ct.items.map(x => x.str).join(' ') + '\n\n';
-        }
-        document.getElementById(ta).value = t.trim();
-        setStatus('Loaded: ' + file.name);
-      } catch {
-        alert('Could not read this PDF. Try saving it as a .txt file first.');
-        ne.style.display = 'none'; ce.style.display = 'none';
-      }
-    };
-    r.onerror = () => alert('Could not read file.');
-    r.readAsArrayBuffer(file);
-
-  } else if (ext === 'docx' || ext === 'doc') {
-    if (typeof mammoth === 'undefined') {
-      alert('Word reader not ready yet — try again in a moment, or paste text manually.');
-      ne.style.display = 'none'; ce.style.display = 'none'; return;
-    }
-    const r = new FileReader();
-    r.onload = async e => {
-      try {
-        const res = await mammoth.extractRawText({ arrayBuffer: e.target.result });
-        document.getElementById(ta).value = res.value.trim();
-        setStatus('Loaded: ' + file.name);
-      } catch {
-        alert('Could not read this Word file. Try pasting the text instead.');
-        ne.style.display = 'none'; ce.style.display = 'none';
-      }
-    };
-    r.onerror = () => alert('Could not read file.');
-    r.readAsArrayBuffer(file);
+function rf(file,ta,fn,cl){
+  const ne=document.getElementById(fn),ce=document.getElementById(cl);
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(!['txt','pdf','docx','doc'].includes(ext)){alert('Please use .txt, .pdf, or .docx');return;}
+  ne.textContent='📄 '+file.name;ne.style.display='inline-block';ce.style.display='inline-block';
+  setStatus('Reading '+file.name+'...');
+  if(ext==='txt'){
+    const r=new FileReader();r.onload=e=>{document.getElementById(ta).value=e.target.result;setStatus('Loaded: '+file.name);};r.onerror=()=>alert('Could not read file.');r.readAsText(file);
+  } else if(ext==='pdf'){
+    if(typeof pdfjsLib==='undefined'){alert('PDF reader not ready — try again in a moment.');ne.style.display='none';ce.style.display='none';return;}
+    const r=new FileReader();r.onload=async e=>{
+      try{const pdf=await pdfjsLib.getDocument({data:new Uint8Array(e.target.result)}).promise;let t='';for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const ct=await pg.getTextContent();t+=ct.items.map(x=>x.str).join(' ')+'\n\n';}document.getElementById(ta).value=t.trim();setStatus('Loaded: '+file.name);}
+      catch{alert('Could not read PDF. Try saving as .txt first.');ne.style.display='none';ce.style.display='none';}
+    };r.onerror=()=>alert('Could not read file.');r.readAsArrayBuffer(file);
+  } else if(ext==='docx'||ext==='doc'){
+    if(typeof mammoth==='undefined'){alert('Word reader not ready — try again in a moment.');ne.style.display='none';ce.style.display='none';return;}
+    const r=new FileReader();r.onload=async e=>{
+      try{const res=await mammoth.extractRawText({arrayBuffer:e.target.result});document.getElementById(ta).value=res.value.trim();setStatus('Loaded: '+file.name);}
+      catch{alert('Could not read Word file. Try pasting instead.');ne.style.display='none';ce.style.display='none';}
+    };r.onerror=()=>alert('Could not read file.');r.readAsArrayBuffer(file);
   }
 }
 </script>
