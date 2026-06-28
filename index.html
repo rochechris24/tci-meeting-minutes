@@ -92,7 +92,10 @@ textarea::placeholder{color:#BBB;}
   <div class="col">
     <div class="col-head out-head">
       <div style="display:flex;align-items:center;gap:8px;"><span class="num">3</span> Generated Minutes</div>
-      <button class="copy-btn" onclick="copyOut()">Copy</button>
+      <div style="display:flex;gap:6px;">
+        <button class="copy-btn" onclick="copyOut()">Copy</button>
+        <button class="copy-btn" id="dlBtn" onclick="downloadWord()" style="background:#111820;color:#FFF;border-color:#111820;" disabled>Download Word</button>
+      </div>
     </div>
     <div class="out" id="out">
       <div class="empty">
@@ -172,7 +175,8 @@ Be concise. Output ONLY the formatted minutes.`;
     if (!text || text.length < 30) throw new Error('Empty response. Check your API key has credits.');
 
     out.textContent = text;
-    document.getElementById('status').textContent = 'Minutes ready — copy or paste into Procore';
+    document.getElementById('status').textContent = 'Minutes ready — copy or download as Word';
+    document.getElementById('dlBtn').disabled = false;
 
   } catch(err) {
     out.innerHTML = `<div class="empty" style="color:#C0392B;"><div style="font-size:22px;">⚠</div><div style="max-width:280px;line-height:1.6;margin-top:8px;">${err.message}</div></div>`;
@@ -205,6 +209,147 @@ function rf(file,ta,fn,cl){
   else if(ext==='docx'||ext==='doc'){const r=new FileReader();r.onload=async e=>{try{const res=await mammoth.extractRawText({arrayBuffer:e.target.result});document.getElementById(ta).value=res.value.trim();}catch{alert('Could not read Word file.');}};r.readAsArrayBuffer(file);}
   else{alert('Use .txt, .pdf, or .docx');ne.style.display='none';ce.style.display='none';}
 }
+
+async function downloadWord() {
+  const text = document.getElementById('out').textContent.trim();
+  if (!text || text.length < 30) return;
+
+  const {
+    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+    AlignmentType, BorderStyle, WidthType, ShadingType, VerticalAlign, LevelFormat
+  } = window.docx;
+
+  const ORANGE='C0392B', DARK='1F1F1F', GRAY_H='F2F2F2', GRAY_B='D9D9D9', WHITE='FFFFFF';
+  const b={style:BorderStyle.SINGLE,size:4,color:'BBBBBB'};
+  const brd={top:b,bottom:b,left:b,right:b};
+  const nb={style:BorderStyle.NONE,size:0,color:'FFFFFF'};
+  const nbd={top:nb,bottom:nb,left:nb,right:nb};
+
+  function tc(text,opts={}){
+    const{bold=false,bg=WHITE,width=2000,size=18,color=DARK,colspan=1,align=AlignmentType.LEFT}=opts;
+    return new TableCell({columnSpan:colspan,width:{size:width,type:WidthType.DXA},shading:{fill:bg,type:ShadingType.CLEAR},borders:brd,margins:{top:60,bottom:60,left:100,right:100},verticalAlign:VerticalAlign.CENTER,children:[new Paragraph({alignment:align,children:[new TextRun({text:String(text||''),bold,size,color,font:'Arial'})]})]})}
+  function hc(t,w){return tc(t,{bold:true,bg:GRAY_H,width:w,size:18});}
+  function sh(title){return new Table({width:{size:9360,type:WidthType.DXA},columnWidths:[9360],rows:[new TableRow({children:[new TableCell({width:{size:9360,type:WidthType.DXA},shading:{fill:GRAY_B,type:ShadingType.CLEAR},borders:brd,margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:title,bold:true,size:20,font:'Arial',color:DARK})]})]})]})]})}
+  function gap(){return new Paragraph({spacing:{after:100},children:[new TextRun({text:'',size:8})]});}
+
+  const children = [];
+
+  // TCI Header
+  children.push(
+    new Table({width:{size:9360,type:WidthType.DXA},columnWidths:[1800,7560],rows:[new TableRow({children:[
+      new TableCell({width:{size:1800,type:WidthType.DXA},borders:nbd,margins:{top:60,bottom:60,left:0,right:120},children:[new Paragraph({children:[new TextRun({text:'TCI',bold:true,size:72,font:'Arial',color:ORANGE})]})]}),
+      new TableCell({width:{size:7560,type:WidthType.DXA},borders:nbd,margins:{top:60,bottom:60,left:120,right:0},children:[
+        new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:'Total Construction, Inc.',bold:true,size:20,font:'Arial'})]}),
+        new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:'625 West Ridge Pike, Building D, Suite 104',size:16,font:'Arial'})]}),
+        new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:'Conshohocken, Pennsylvania 19428',size:16,font:'Arial'})]}),
+      ]})
+    ]})]})
+  );
+  children.push(gap());
+
+  // Parse sections from AI output and render
+  const lines = text.split('\n');
+  let curSection = '', curLines = [];
+  const sectionMap = {
+    'meeting information':'Meeting Information',
+    'overview':'Overview',
+    'attendees':'Scheduled Attendees',
+    'design':'Design',
+    'progress':'Progress Update / Schedule',
+    'schedule':'Progress Update / Schedule',
+    'coordination':'Coordination',
+    'tenant':'Tenant Coordination',
+    'subcontractor':'Subcontractor Coordination',
+    "rfi":"RFI's",
+    'change':'Change Orders',
+    'administrative':'Administrative'
+  };
+
+  function flushSection() {
+    if (!curSection) return;
+    let header = curSection;
+    for(const [k,v] of Object.entries(sectionMap)){
+      if(curSection.toLowerCase().includes(k)){header=v;break;}
+    }
+    children.push(sh(header), gap());
+    let i=0;
+    let hasItems=false;
+    while(i<curLines.length){
+      const line=curLines[i].trim();
+      const m=line.match(/^(\d+\.\d+)\s+(.*)/);
+      if(m){
+        hasItems=true;
+        const no=m[1];
+        let title=m[2].replace(/[-–|].*/,'').trim();
+        let status='Open';
+        if(/closed/i.test(m[2]))status='Closed';
+        else if(/carried/i.test(m[2]))status='Carried';
+        const cw=[500,700,3260,2000,900];
+        children.push(new Table({width:{size:9360,type:WidthType.DXA},columnWidths:cw,rows:[
+          new TableRow({children:['No.','Origin','Title','Assignment','Status'].map((h,j)=>hc(h,cw[j]))}),
+          new TableRow({children:[no,'',title,'',status].map((v,j)=>tc(v||'',{width:cw[j],size:16}))})
+        ]}));
+        i++;
+        let bodyLines=[];
+        while(i<curLines.length&&!/^\d+\.\d+\s/.test(curLines[i].trim())){
+          if(curLines[i].trim()) bodyLines.push(curLines[i].trim());
+          i++;
+        }
+        if(bodyLines.length){
+          children.push(new Table({width:{size:9360,type:WidthType.DXA},columnWidths:[9360],rows:[new TableRow({children:[new TableCell({width:{size:9360,type:WidthType.DXA},shading:{fill:WHITE,type:ShadingType.CLEAR},borders:brd,margins:{top:80,bottom:80,left:200,right:120},children:bodyLines.map(l=>new Paragraph({spacing:{after:60},children:[new TextRun({text:l.replace(/^[•\-]\s*/,'').trim()||' ',bold:/official documented/i.test(l),size:16,font:'Arial'})]}))})]})]}));
+        }
+        children.push(gap());
+      } else {
+        i++;
+      }
+    }
+    if(!hasItems){
+      const nonEmpty=curLines.filter(l=>l.trim());
+      if(nonEmpty.length){
+        children.push(new Table({width:{size:9360,type:WidthType.DXA},columnWidths:[9360],rows:[new TableRow({children:[new TableCell({width:{size:9360,type:WidthType.DXA},shading:{fill:WHITE,type:ShadingType.CLEAR},borders:brd,margins:{top:80,bottom:80,left:200,right:120},children:nonEmpty.map(l=>new Paragraph({spacing:{after:60},children:[new TextRun({text:l.trim(),size:16,font:'Arial'})]}))})]})]}));
+        children.push(gap());
+      }
+    }
+  }
+
+  for(const line of lines){
+    if(/^={2,}/.test(line.trim())){
+      flushSection();
+      curSection=line.replace(/=/g,'').trim();
+      curLines=[];
+    } else {
+      curLines.push(line);
+    }
+  }
+  flushSection();
+
+  // Footer
+  children.push(
+    new Paragraph({spacing:{before:200,after:80},children:[new TextRun({text:'These meeting minutes are believed to be an accurate reflection of those items discussed and the conclusions that were reached during the referenced meeting. Please contact Total Construction, Inc. if there are any discrepancies or questions with the content of these minutes.',size:16,font:'Arial',italics:true,color:'555555'})]}),
+    new Table({width:{size:9360,type:WidthType.DXA},columnWidths:[4680,4680],rows:[new TableRow({children:[
+      new TableCell({width:{size:4680,type:WidthType.DXA},borders:nbd,children:[new Paragraph({children:[new TextRun({text:'Total Construction, Inc.',size:16,font:'Arial'})]}),]}),
+      new TableCell({width:{size:4680,type:WidthType.DXA},borders:nbd,children:[new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:'Printed: '+new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}),size:16,font:'Arial'})]})]}),
+    ]})]})
+  );
+
+  try {
+    const doc = new window.docx.Document({
+      styles:{default:{document:{run:{font:'Arial',size:20}}}},
+      sections:[{properties:{page:{size:{width:12240,height:15840},margin:{top:1080,right:1080,bottom:1080,left:1080}}},children}]
+    });
+    const buffer = await Packer.toBuffer(doc);
+    const blob = new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement('a');
+    a.href=url; a.download='TCI_OAC_Minutes_'+new Date().toISOString().split('T')[0]+'.docx';
+    window.document.body.appendChild(a); a.click();
+    window.document.body.removeChild(a); URL.revokeObjectURL(url);
+    document.getElementById('status').textContent = 'Word file downloaded ✓';
+  } catch(err) {
+    document.getElementById('status').textContent = 'Word export error: '+err.message;
+  }
+}
 </script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
 </body>
 </html>
