@@ -203,11 +203,72 @@ function fc(e,ta,fn,cl,z){if(e)e.stopPropagation();document.getElementById(ta).v
 function rf(file,ta,fn,cl){
   const ne=document.getElementById(fn),ce=document.getElementById(cl);
   const ext=file.name.split('.').pop().toLowerCase();
-  ne.textContent='📄 '+file.name;ne.style.display='inline-block';ce.style.display='inline-block';
-  if(ext==='txt'){const r=new FileReader();r.onload=e=>{document.getElementById(ta).value=e.target.result;};r.readAsText(file);}
-  else if(ext==='pdf'){const r=new FileReader();r.onload=async e=>{try{const pdf=await pdfjsLib.getDocument({data:new Uint8Array(e.target.result)}).promise;let t='';for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i);const c=await p.getTextContent();t+=c.items.map(x=>x.str).join(' ')+'\n\n';}document.getElementById(ta).value=t.trim();}catch{alert('Could not read PDF.');}};r.readAsArrayBuffer(file);}
-  else if(ext==='docx'||ext==='doc'){const r=new FileReader();r.onload=async e=>{try{const res=await mammoth.extractRawText({arrayBuffer:e.target.result});document.getElementById(ta).value=res.value.trim();}catch{alert('Could not read Word file.');}};r.readAsArrayBuffer(file);}
-  else{alert('Use .txt, .pdf, or .docx');ne.style.display='none';ce.style.display='none';}
+
+  if(!['txt','pdf','docx','doc'].includes(ext)){
+    alert('Please use a .txt, .pdf, or .docx file.');
+    return;
+  }
+
+  ne.textContent='📄 '+file.name;
+  ne.style.display='inline-block';
+  ce.style.display='inline-block';
+  document.getElementById('status').textContent='Reading '+file.name+'...';
+
+  if(ext==='txt'){
+    const r=new FileReader();
+    r.onload=e=>{
+      document.getElementById(ta).value=e.target.result;
+      document.getElementById('status').textContent='Loaded: '+file.name;
+    };
+    r.onerror=()=>alert('Could not read file. Try pasting text instead.');
+    r.readAsText(file);
+
+  } else if(ext==='pdf'){
+    if(typeof pdfjsLib==='undefined'){
+      alert('PDF library not ready. Wait a moment and try again, or paste the text manually.');
+      ne.style.display='none';ce.style.display='none';return;
+    }
+    const r=new FileReader();
+    r.onload=async e=>{
+      try{
+        const pdf=await pdfjsLib.getDocument({data:new Uint8Array(e.target.result)}).promise;
+        let t='';
+        for(let i=1;i<=pdf.numPages;i++){
+          const pg=await pdf.getPage(i);
+          const ct=await pg.getTextContent();
+          t+=ct.items.map(x=>x.str).join(' ')+'
+
+';
+        }
+        document.getElementById(ta).value=t.trim();
+        document.getElementById('status').textContent='Loaded: '+file.name;
+      }catch(err){
+        alert('Could not read PDF. Try saving as .txt and uploading that instead.');
+        ne.style.display='none';ce.style.display='none';
+      }
+    };
+    r.onerror=()=>alert('Could not read file.');
+    r.readAsArrayBuffer(file);
+
+  } else if(ext==='docx'||ext==='doc'){
+    if(typeof mammoth==='undefined'){
+      alert('Word library not ready. Wait a moment and try again, or paste the text manually.');
+      ne.style.display='none';ce.style.display='none';return;
+    }
+    const r=new FileReader();
+    r.onload=async e=>{
+      try{
+        const res=await mammoth.extractRawText({arrayBuffer:e.target.result});
+        document.getElementById(ta).value=res.value.trim();
+        document.getElementById('status').textContent='Loaded: '+file.name;
+      }catch(err){
+        alert('Could not read Word file. Try copying and pasting the text instead.');
+        ne.style.display='none';ce.style.display='none';
+      }
+    };
+    r.onerror=()=>alert('Could not read file.');
+    r.readAsArrayBuffer(file);
+  }
 }
 
 function downloadWord() {
