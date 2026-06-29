@@ -203,6 +203,14 @@ ITEM | [No.] | [Mtg Origin] | [Title] | [Assignment] | [Due Date] | [Priority] |
 DESC | [description]
 OFFICIAL | [official notes]
 
+=== ACTION ITEMS SUMMARY ===
+Extract every action item from the entire meeting — regardless of which section it appeared in. Group them by responsible party. Include what needs to be done, who owns it, and the due date if discussed.
+
+TCI | [action item] | [due date or "TBD"]
+CLIENT | [action item] | [due date or "TBD"]
+ARCHITECT | [action item] | [due date or "TBD"]
+SUBCONTRACTOR | [sub name] | [action item] | [due date or "TBD"]
+
 Only include sections that have content. Output ONLY the formatted minutes. No preamble.`;
 
   const user = (prev ? `PREVIOUS MINUTES:\n${prev}\n\n` : '') + `TRANSCRIPT:\n${trans}`;
@@ -422,6 +430,7 @@ function buildPDFHtml(rawText) {
 
   // Content sections
   const skipSections = ['MEETING INFORMATION','OVERVIEW','SCHEDULED ATTENDEES'];
+  const actionSections = ['ACTION ITEMS SUMMARY','ACTION ITEMS'];
   for (const section of sections) {
     if (skipSections.includes(section.name.toUpperCase())) continue;
     if (!section.items.length && !section.raw.length) continue;
@@ -462,6 +471,90 @@ function buildPDFHtml(rawText) {
     } else if (section.raw.length) {
       html += `<table class="item-desc-table"><tr><td>${section.raw.join('<br>')}</td></tr></table>`;
     }
+  }
+
+  // Action Items Summary Section
+  const actionSection = sections.find(s => actionSections.some(a => s.name.toUpperCase().includes(a)));
+  if (actionSection && actionSection.raw.length) {
+    html += `<div class="section-title" style="background:#111820;color:#FFF;padding:8px 10px;margin-top:18px;border:none;">
+      ACTION ITEMS SUMMARY
+    </div>`;
+
+    // Group by party
+    const parties = { TCI: [], CLIENT: [], ARCHITECT: [], SUBCONTRACTOR: [] };
+    const otherItems = [];
+
+    for (const line of actionSection.raw) {
+      const t = line.trim();
+      if (!t) continue;
+      if (/^TCI\s*\|/i.test(t)) {
+        const parts = t.split('|').map(s=>s.trim());
+        parties.TCI.push({ action: parts[1]||'', due: parts[2]||'TBD' });
+      } else if (/^CLIENT\s*\|/i.test(t)) {
+        const parts = t.split('|').map(s=>s.trim());
+        parties.CLIENT.push({ action: parts[1]||'', due: parts[2]||'TBD' });
+      } else if (/^ARCHITECT\s*\|/i.test(t)) {
+        const parts = t.split('|').map(s=>s.trim());
+        parties.ARCHITECT.push({ action: parts[1]||'', due: parts[2]||'TBD' });
+      } else if (/^SUBCONTRACTOR\s*\|/i.test(t)) {
+        const parts = t.split('|').map(s=>s.trim());
+        parties.SUBCONTRACTOR.push({ sub: parts[1]||'', action: parts[2]||'', due: parts[3]||'TBD' });
+      } else {
+        otherItems.push(t);
+      }
+    }
+
+    const partyColors = { TCI: '#E8500A', CLIENT: '#1F497D', ARCHITECT: '#1A7A4A', SUBCONTRACTOR: '#7B4FA6' };
+    const partyLabels = { TCI: 'TCI — Total Construction', CLIENT: 'Client / Owner', ARCHITECT: 'Architect / Engineer', SUBCONTRACTOR: 'Subcontractors' };
+
+    html += `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+      <tr>
+        <th style="background:#F2F2F2;border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;text-align:left;width:30%">Responsible Party</th>
+        <th style="background:#F2F2F2;border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;text-align:left;width:55%">Action Item</th>
+        <th style="background:#F2F2F2;border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;text-align:left;width:15%">Due Date</th>
+      </tr>`;
+
+    let hasRows = false;
+
+    for (const [party, items] of Object.entries(parties)) {
+      if (!items.length) continue;
+      hasRows = true;
+      const color = partyColors[party];
+      const label = partyLabels[party];
+
+      if (party === 'SUBCONTRACTOR') {
+        for (const item of items) {
+          html += `<tr>
+            <td style="border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;vertical-align:top;">
+              <span style="display:inline-block;background:${color};color:#FFF;padding:1px 6px;border-radius:3px;font-size:7.5pt;font-weight:bold;margin-bottom:2px;">${party}</span>
+              <div style="font-size:8pt;color:#444;margin-top:2px;">${item.sub}</div>
+            </td>
+            <td style="border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;vertical-align:top;">${item.action}</td>
+            <td style="border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;vertical-align:top;">${item.due}</td>
+          </tr>`;
+        }
+      } else {
+        for (const item of items) {
+          html += `<tr>
+            <td style="border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;vertical-align:top;">
+              <span style="display:inline-block;background:${color};color:#FFF;padding:1px 6px;border-radius:3px;font-size:7.5pt;font-weight:bold;">${party}</span>
+              <div style="font-size:8pt;color:#444;margin-top:2px;">${label}</div>
+            </td>
+            <td style="border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;vertical-align:top;">${item.action}</td>
+            <td style="border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;vertical-align:top;">${item.due}</td>
+          </tr>`;
+        }
+      }
+    }
+
+    // Fallback if no structured items parsed
+    if (!hasRows && otherItems.length) {
+      for (const item of otherItems) {
+        html += `<tr><td colspan="3" style="border:1px solid #CCC;padding:5px 8px;font-size:8.5pt;">${item}</td></tr>`;
+      }
+    }
+
+    html += `</table>`;
   }
 
   // Footer
